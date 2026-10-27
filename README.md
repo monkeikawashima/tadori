@@ -11,11 +11,15 @@
 
 GitHub のアカウントは要りません。
 
-1. [Claude デスクトップアプリ](https://claude.com/download)を入れてログイン（有料プラン）
-2. **Customize → Plugins → Add → Add marketplace** を開く
-3. `monkeikawashima/tadori` と入力し、**tadori** を追加
+1. [Claude デスクトップアプリ](https://claude.com/download)を入れてログイン（Cowork は有料プラン）
+2. 左のサイドバーの **Customize** → **Plugins** を開く
+3. **Add marketplace** を選び、`monkeikawashima/tadori` と入力
+4. 一覧に出た **tadori** を選んで **Install**
 
-資料依頼をメールで出すなら、**Customize → Connectors** で Gmail か Outlook も接続しておきます。
+tadori は Cowork で動きます。通常のチャットでは使えません。
+最新版にするときは、Plugins の画面でこのマーケットプレイスの **Update** を押します。
+
+資料依頼をメールで出すなら、**Customize** → **Connectors** で Gmail か Outlook も接続しておきます。
 
 <br>
 
