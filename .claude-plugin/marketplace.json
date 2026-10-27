@@ -11,7 +11,7 @@
       "name": "tadori",
       "source": "./plugins/tadori",
       "description": "案件フォルダ作成、資料取込、監査計画、並列レビューループ、資料依頼メール、成果物作成",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   ]
 }

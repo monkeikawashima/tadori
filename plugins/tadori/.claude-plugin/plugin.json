@@ -1,6 +1,6 @@
 {
   "name": "tadori",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "会計監査の手続実行・レビュー・資料依頼を複数エージェントで回す。人間の確認は計画承認と最終査閲の2回",
   "author": {
     "name": "monkeikawashima"
