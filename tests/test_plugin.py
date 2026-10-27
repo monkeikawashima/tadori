@@ -95,6 +95,19 @@ class PluginTest(unittest.TestCase):
         for r in ["weekend", "period_end", "post_close", "round_amount", "manual"]:
             self.assertIn(r, top["reasons"])
 
+    def test_je_filter_entered_at_without_seconds(self):
+        for entered_at in ["2026-04-25T10:05", "2026/04/25 10:05", "2026-04-25 10:05"]:
+            rows = [r[:] for r in GL_ROWS]
+            for r in rows:
+                if r[1] == "J2":
+                    r[9] = entered_at
+            gl = self.eng / "02_正規化データ" / "仕訳帳_秒なし.csv"
+            write_csv(gl, GL_HEADER, rows)
+            code, out, err = run(S / "je_filter.py", "--gl", gl, "--period-end", "2026-03-31", "--close-date", "2026-04-20")
+            self.assertEqual(code, 0, err)
+            top = json.loads(out)["hits"][0]
+            self.assertIn("post_close", top["reasons"], entered_at)
+
     def test_mus_deterministic(self):
         pop = self.tmp / "pop.csv"
         write_csv(pop, ["id", "balance"], [[f"C{i:03d}", str(10000 * (i % 37 + 1))] for i in range(200)] + [["BIG", "9,000,000"]])

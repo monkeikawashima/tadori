@@ -7,6 +7,8 @@
   - 開いている案件とは別の案件フォルダへの書込（クライアント取り違え防止）
 止めたら終了コード 2 で理由を返す。Claude はその理由を読んで別の方法を取る。
 """
+from __future__ import annotations
+
 import json
 import re
 import sys

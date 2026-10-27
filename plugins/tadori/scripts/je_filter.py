@@ -19,6 +19,8 @@
   rare_pair      借方科目×貸方科目の組合せが期中 --rare-max 回以下
   unusual_user   入力者が期中 --rare-user-max 件以下しか入力していない
 """
+from __future__ import annotations
+
 import argparse
 import sys
 from collections import Counter, defaultdict
@@ -35,7 +37,9 @@ def parse_date(s) -> date | None:
     if isinstance(s, date):
         return s
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+    # 入力日時は秒なし（2027-01-20T22:14、2027/01/20 22:14）で出す会計ソフトもある
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M", "%Y-%m-%dT%H:%M"):
         try:
             return datetime.strptime(s[:19], fmt).date()
         except ValueError:
