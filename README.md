@@ -11,7 +11,7 @@
 
 GitHub のアカウントは要りません。
 
-1. [Claude デスクトップアプリ](https://claude.com/download)を入れてログイン（Cowork は有料プラン）
+1. [Claude デスクトップアプリ](https://claude.com/download)を入れてログイン
 2. **設定** → **プラグイン** を開く
 3. マーケットプレイスの追加を開き、**リポジトリから追加** を選んで `monkeikawashima/tadori` と入力
 4. 一覧に出た **tadori** をインストール
