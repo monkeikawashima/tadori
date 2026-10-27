@@ -1,0 +1,17 @@
+{
+  "name": "tadori",
+  "owner": {
+    "name": "monkeikawashima"
+  },
+  "metadata": {
+    "description": "会計監査の手続実行・レビュー・資料依頼を複数エージェントで回すプラグイン"
+  },
+  "plugins": [
+    {
+      "name": "tadori",
+      "source": "./plugins/tadori",
+      "description": "案件フォルダ作成、資料取込、監査計画、並列レビューループ、資料依頼メール、成果物作成",
+      "version": "0.1.0"
+    }
+  ]
+}

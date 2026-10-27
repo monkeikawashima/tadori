@@ -1,0 +1,49 @@
+{
+  "client": "",
+  "engagement_type": "法定監査 | 任意監査 | 内部監査 | 決算チェック のいずれか",
+  "period_start": "YYYY-MM-DD",
+  "fiscal_period_end": "YYYY-MM-DD",
+  "close_date": "",
+  "report_date": "",
+  "evidence_deadline": "",
+  "accounting_system": "",
+  "team": [
+    { "name": "", "role": "責任者" },
+    { "name": "", "role": "査閲者" }
+  ],
+  "materiality": {
+    "overall": null,
+    "performance": null,
+    "trivial": null,
+    "basis": "",
+    "set_by": ""
+  },
+  "plan_status": "draft",
+  "plan_approved_by": "",
+  "plan_approved_at": "",
+  "contacts": [
+    { "key": "keiri", "role": "経理部", "name": "", "email": "" }
+  ],
+  "auditor_domains": [],
+  "mail": {
+    "mode": "draft",
+    "batch": "1日1通（依頼先ごと）",
+    "signature": ""
+  },
+  "pbc_rules": {
+    "remind_after_business_days": 3,
+    "max_reminders": 1,
+    "escalate_after_business_days": 3
+  },
+  "holidays": [],
+  "loop": {
+    "pass_score": 85,
+    "max_rounds": 4,
+    "reviewer_count": 1,
+    "skeptic_count": 3
+  },
+  "budget": {
+    "max_agent_calls_per_area": 12,
+    "max_agent_calls_total": 300
+  }
+}

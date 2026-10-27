@@ -1,0 +1,13 @@
+# クライアントのデータを誤ってコミットしない
+*.xlsx
+*.xlsm
+*.xls
+*.pdf
+*.docx
+*期/
+監査案件/
+evals/private/
+
+__pycache__/
+*.pyc
+.DS_Store
