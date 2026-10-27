@@ -1,5 +1,6 @@
 ---
 name: intake
+user-invocable: false
 description: クライアントから受け取った資料（添付ファイル、共有ドライブのファイル、会話に添付されたファイル）を案件フォルダに原本として取り込み、正規化・照合して依頼の充足を判定し、該当領域の再実行につなげる。「資料が届いた」「受領資料を取り込んで」「返信を確認して」、または定期実行の受信処理で使う。
 ---
 
@@ -34,7 +35,7 @@ python3 $S/pbc.py mark --engagement . --id <PBC id> --status rejected --today <�
 python3 $S/pbc.py report --engagement .
 ```
 - `rejected`（期間違い・金額不一致）は再依頼キューに戻る。次の request-mail で再依頼する
-- `accepted` で `areas_to_rerun` がある領域は、`/tadori:run` をその領域だけ指定して再実行する（計画承認済みのときだけ）
+- `accepted` で `areas_to_rerun` がある領域は、run スキルをその領域だけ指定して再実行する（計画承認済みのときだけ）
 
 ## 5. 報告
 新規登録した資料、充足した依頼、再依頼に回した依頼、再実行した領域を短く伝える。

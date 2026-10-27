@@ -1,5 +1,6 @@
 ---
 name: review-rubric
+user-invocable: false
 description: 監査調書の査閲基準（ハードチェックと0〜100点の採点表）。reviewer エージェントが調書を採点するとき、fixer が直すときに読む。
 ---
 

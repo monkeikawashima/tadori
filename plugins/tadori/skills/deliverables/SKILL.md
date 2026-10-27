@@ -1,5 +1,6 @@
 ---
 name: deliverables
+user-invocable: false
 description: 監査の成果物をどの形式（Excel / Word / PDF）で作るか、ファイル名・版管理・保存場所をどうするかのルール。計画書、調書、未修正虚偽表示一覧、マネジメントレター、査閲メモなど成果物を作るときは必ず読む。
 ---
 

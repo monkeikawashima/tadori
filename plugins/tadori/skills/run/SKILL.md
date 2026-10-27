@@ -1,5 +1,6 @@
 ---
 name: run
+user-invocable: false
 description: 承認済みの監査計画に従って、領域ごとに executor → reviewer → fixer のループを並列で回し、合格・エスカレーション・資料待ちに振り分ける。「監査を実行」「手続を回して」「〇〇の領域を再実行」で使う。
 ---
 
@@ -8,7 +9,7 @@ description: 承認済みの監査計画に従って、領域ごとに executor 
 スクリプトの場所：`${CLAUDE_PLUGIN_ROOT}/scripts`（展開されていなければ `../../scripts`）。以下 `$S`。
 
 ## 0. 始める前に
-- `00_案件情報/engagement.json` の `plan_status` が `approved` でなければ止めて、`/tadori:plan` に戻す
+- `00_案件情報/engagement.json` の `plan_status` が `approved` でなければ止めて、plan スキルに戻す
 - 対象領域：指定があればそれだけ、無ければ plan.json の全領域から status が `pass` 以外のもの
 - 予算：`engagement.json` の `budget`。領域ごとのサブエージェント呼出数と全体の呼出数を数え、超えたらその領域を `escalate`（理由「予算超過」）にして止める
 
@@ -49,7 +50,7 @@ python3 $S/pbc.py report --engagement .
 python3 $S/summarize.py --engagement . --today <今日>
 python3 $S/engagement.py status --engagement . --status "実行中（pass x / 全 y）" --today <今日>
 ```
-報告は「pass／escalate／blocked の領域数」「新しく依頼キューに入れた件数」「人の判断が要る事項」だけ。全領域が pass か escalate になり、blocked が0なら `/tadori:finalize` に進めると伝える。
+報告は「pass／escalate／blocked の領域数」「新しく依頼キューに入れた件数」「人の判断が要る事項」だけ。全領域が pass か escalate になり、blocked が0なら finalize スキルに進む（利用者には「/tadori:start で最終確認に進みます」と伝える）。
 
 ## 再実行
 受領資料で依頼が充足したら、intake スキルから該当領域だけを指定してこのスキルを呼ぶ。executor は既存の調書を読み、未了の手続だけを実行する。

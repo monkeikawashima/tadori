@@ -1,5 +1,6 @@
 ---
 name: plan
+user-invocable: false
 description: 監査計画（リスク評価、重要性、領域ごとの手続割当、資料依頼先とメール運用）のドラフトを作り、人の承認（ゲート1）を受けて固定する。「計画を作って」「監査計画」「リスク評価」で使う。承認後の実行は run スキル。
 ---
 
@@ -61,4 +62,4 @@ python3 $S/engagement.py approve --engagement . --by "<承認者名>" --today <�
 - 重要性か依頼先のアドレスが空だとスクリプトが止まる。埋まるまで承認しない
 - 承認後、plan.json と engagement.json は hooks で書込禁止になる。変更は人の指示で `engagement.py reopen --reason` を実行してから
 
-承認できたら、初回依頼を `pbc.py add` でキューに入れ、`/tadori:run` に進めると伝える。
+承認できたら、初回依頼を `pbc.py add` でキューに入れ、続けて run スキルに進む（利用者には「/tadori:start で続けます」とだけ伝える）。

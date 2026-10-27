@@ -1,5 +1,6 @@
 ---
 name: client-documents
+user-invocable: false
 description: クライアントから受け取った資料（会計ソフトの CSV、結合セルの多い Excel、スキャン PDF、銀行明細など）を 02_正規化データ の標準形式に変換するルール。受領資料を読んで表に直すときに読む。
 ---
 
