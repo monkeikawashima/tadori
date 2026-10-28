@@ -17,8 +17,10 @@ description: 承認済みの監査計画に従って、領域ごとに executor 
 領域ごとに executor エージェントを起動する。独立した領域は同時に起動してよい（目安：同時に 4〜6 領域）。
 渡すもの：area_id、plan.json の該当部分、重要性、データの場所。これ以外の会話の文脈は渡さない。
 
+完了した手続が1つもない領域（`procedures` がすべて「未了」）は、レビューに回さない。調書の `status` を `blocked`、`status_reason` に「受領済みの資料では手続を実施できない」と書いて 3 に進む。レビューは資料を受け取って再実行した後に行う（外部証拠がない状態でレビューしても、資料を求める指摘しか出ないため）。
+
 ## 2. レビューループ（領域ごと）
-`engagement.json` の `loop`（既定：合格点 85、最大 4 周）に従う。
+`engagement.json` の `loop`（既定：合格点 85、最大 4 周）に従う。完了した手続が1つでもあれば、`blocked` があってもループに入る。
 
 ```
 前回点 = なし
@@ -33,13 +35,17 @@ status = escalate（理由「最大周回」）
 ```
 - reviewer の `needs_human` は調書の `escalations` に転記する
 - ループ中に `blocked` が増えたら、その領域は `blocked` にしてループを抜ける
+- `status`、`status_reason`（なぜその状態にしたか）、`rounds` は、このスキルが調書に書く
 
 ## 3. 資料不足の振り分け
-status が `blocked` の領域は、調書の `blocked` を1件ずつ依頼キューに入れる。
+status が `blocked` の領域は、調書の `blocked` のうち `pbc` が空のものを1件ずつ依頼キューに入れる。
 ```bash
+python3 $S/pbc.py list --engagement . --status queued drafted sent reminded received rejected
 python3 $S/pbc.py add --engagement . --today <今日> --json '{"area":"<area_id>","doc_type":"…","period":"…","accounts":[…],"procedure":"…","reason":"…","to":"<contactsのkey>"}'
 ```
-- 同じ資料を別領域が求めていれば自動で1件に統合される
+- 先に `list` で未完了の依頼を見る。同じ資料が別の書き方で依頼済みなら、`"same_as": "<PBC ID>"` を付けて add し、既存の依頼に統合する。資料名・期間・勘定が一字一句同じときしか自動では統合されない
+- 入れた依頼の PBC ID を、調書の `blocked` の該当行の `pbc` に書く
+- `doc_type` と `reason` は、クライアントにそのまま見せてよい書き方にする。requester は資料名をそのままメールに入れる。不正の兆候に関わる取引先・伝票番号を名指ししない。「〇〇社分は別件」のように特定の取引先を特別扱いしていると分かる書き方もしない
 - 依頼前に、受領台帳と 02_正規化データ に代わりになる資料がないかを executor が確認済みであること（`substitute_checked` が空なら executor に戻す）
 - 宛先キーが contacts にないと止まる。その依頼は人間確認欄へ
 - 確認状（銀行・取引先）と不正の兆候に関わる資料は、キューに入れず `escalations` に書く

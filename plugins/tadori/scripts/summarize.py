@@ -14,7 +14,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-from _common import dump, load_engagement, to_decimal
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import dump, load_engagement, to_decimal  # noqa: E402
 
 
 def next_version(dir_: Path, stem: str) -> int:

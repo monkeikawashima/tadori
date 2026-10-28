@@ -5,7 +5,8 @@
 人が見る表は `report` で 04_依頼管理/依頼トラッカー.xlsx に書き出す。
 
 サブコマンド:
-  add     依頼を追加。同じ資料（資料種別・期間・勘定が同じ）の未完了依頼があれば統合する
+  add     依頼を追加。同じ資料（資料種別・期間・勘定が同じ）の未完了依頼があれば統合する。
+          書き方が違う同じ資料は "same_as": "PBC0003" で既存の依頼に統合する
   list    現在の状態を一覧（--status で絞込）
   mark    状態を更新（drafted/sent/reminded/received/accepted/rejected/escalated/cancelled）
   due     --today 時点で、送るべき依頼・督促すべき依頼・エスカレーションすべき依頼を返す
@@ -14,6 +15,8 @@
 例:
   python3 pbc.py add --engagement . --today 2026-10-27 --json '{"area":"売上","doc_type":"得意先別売掛金残高表",
       "period":"2026-03-31時点","accounts":["1130"],"procedure":"残高確認の母集団","reason":"MUSの母集団に使う","to":"keiri"}'
+  python3 pbc.py add --engagement . --today 2026-10-28 --json '{"same_as":"PBC0001","area":"売掛金","doc_type":"得意先別の売掛金残高",
+      "period":"2026-03-31","accounts":["1130"],"procedure":"AR-01","reason":"残高の照合","to":"keiri"}'
   python3 pbc.py mark --engagement . --id PBC0003 --status sent --today 2026-10-27 --note "メールID xxx"
   python3 pbc.py due --engagement . --today 2026-10-30
 """
@@ -24,7 +27,8 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-from _common import dump, load_engagement
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import dump, load_engagement  # noqa: E402
 
 STATUSES = ["queued", "drafted", "sent", "reminded", "received", "accepted", "rejected", "escalated", "cancelled"]
 OPEN = {"queued", "drafted", "sent", "reminded", "received", "rejected"}
@@ -103,6 +107,16 @@ def cmd_add(root: Path, args) -> None:
     if req["to"] not in contacts:
         sys.exit(f"宛先キー {req['to']!r} は engagement.json の contacts にありません。計画承認で登録された担当者だけに依頼できます")
     state = replay(root)
+    same_as = req.pop("same_as", None)
+    if same_as:
+        target = state.get(same_as)
+        if target is None:
+            sys.exit(f"same_as の {same_as} がありません")
+        if target["status"] not in OPEN:
+            sys.exit(f"{same_as} は {target['status']} で完了しています。新しく依頼するなら same_as を外してください")
+        append(root, {"ts": args.today, "event": "merged", "id": same_as, "request": req})
+        dump({"action": "merged", "id": same_as, "areas": sorted(set(target["areas"] + [req["area"]]))})
+        return
     k = key_of(req)
     for r in state.values():
         if r["status"] in OPEN and key_of(r) == k:

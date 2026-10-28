@@ -58,6 +58,8 @@ class PluginTest(unittest.TestCase):
         cfg["contacts"] = [{"key": "keiri", "role": "経理部", "name": "田中", "email": "tanaka@client.example"}]
         cfg["auditor_domains"] = ["audit.example"]
         cfg["materiality"].update(overall=3000000, performance=2000000, trivial=150000)
+        cfg["evidence_deadline"] = "2026-11-20"
+        cfg["mail"]["signature"] = "監査チーム 川島"
         (self.eng / "00_案件情報" / "engagement.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
         (self.eng / "00_案件情報" / "plan.json").write_text('{"version":1,"areas":[]}', encoding="utf-8")
 
@@ -144,6 +146,51 @@ class PluginTest(unittest.TestCase):
         code, out, _ = run(S / "evidence_check.py", "--file", f, "--amount-col", "balance", "--tb", tb, "--account", "1130")
         self.assertEqual(code, 1)
 
+    def test_subledger_match(self):
+        nd = self.eng / "02_正規化データ"
+        code, out, err = run(S / "subledger_match.py", "--gl", nd / "仕訳帳.csv", "--account", "1130", "--tb", nd / "試算表.csv")
+        self.assertEqual(code, 0, err)
+        res = json.loads(out)
+        self.assertEqual(res["open_total"], "5800000")  # = 試算表の期末残高
+        self.assertTrue(res["tb"]["open_total_equals_closing"])
+        a = next(c for c in res["by_counterparty"] if c["counterparty"] == "A社")
+        self.assertEqual(a["open_items"][0]["remaining"], "800000")  # 1,100,000 のうち 300,000 を消込
+        # 計上より前の入金は消し込まず「対応する計上なし」にする
+        rows = [r[:] for r in GL_ROWS]
+        rows[4][0] = rows[5][0] = "2026-01-10"
+        write_csv(nd / "仕訳帳_先入金.csv", GL_HEADER, rows)
+        code, out, _ = run(S / "subledger_match.py", "--gl", nd / "仕訳帳_先入金.csv", "--account", "1130", "--tb", nd / "試算表.csv")
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["unmatched_decrease_total"], "300000")
+
+    def test_je_sequence(self):
+        code, out, err = run(S / "je_sequence.py", "--gl", self.eng / "02_正規化データ" / "仕訳帳.csv", "--lag-days", "7")
+        self.assertEqual(code, 0, err)
+        res = json.loads(out)
+        self.assertEqual(res["journal_entries"], 3)
+        self.assertEqual(res["gaps"]["count"], 0)
+        self.assertEqual([x["je_id"] for x in res["date_reversals"]["items"]], ["J3"])  # J2 3/28 → J3 2/10
+        self.assertEqual([x["je_id"] for x in res["entered_reversals"]["items"]], ["J3"])
+        self.assertEqual([x["je_id"] for x in res["entry_lag"]["late"]], ["J2"])  # 3/28 計上、4/25 入力
+        rows = [r for r in GL_ROWS if r[1] != "J2"]
+        rows[1][9] = "2026-01-20"
+        write_csv(self.tmp / "gl_gap.csv", GL_HEADER, rows)
+        res = json.loads(run(S / "je_sequence.py", "--gl", self.tmp / "gl_gap.csv")[1])
+        self.assertEqual(res["gaps"]["ids"], ["J2"])
+        self.assertEqual(res["mixed_entered_at"]["items"][0]["je_id"], "J1")
+
+    def test_monthly(self):
+        csv_out = self.eng / "03_調書" / "revenue_work" / "月別.csv"
+        code, out, err = run(S / "monthly.py", "--gl", self.eng / "02_正規化データ" / "仕訳帳.csv", "--accounts", "4110",
+                             "--csv", csv_out)
+        self.assertEqual(code, 0, err)
+        res = json.loads(out)
+        self.assertEqual(res["months"], ["2026-01", "2026-03"])
+        months = res["series"][0]["months"]
+        self.assertEqual((months["2026-01"]["credit"], months["2026-03"]["credit"]), ("1100000", "5000000"))
+        self.assertEqual(res["series"][0]["total"]["net"], "-6100000")
+        self.assertTrue(csv_out.exists())
+
     def test_pbc_merge_due_report(self):
         req = {"area": "売上", "doc_type": "得意先別売掛金残高表", "period": "2026-03-31時点",
                "accounts": ["1130"], "procedure": "REV-02", "reason": "母集団", "to": "keiri"}
@@ -154,6 +201,13 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["action"], "merged")
         bad = dict(req, to="unknown", doc_type="別資料")
         self.assertNotEqual(run(S / "pbc.py", "add", "--engagement", self.eng, "--today", TODAY, "--json", json.dumps(bad))[0], 0)
+        # 書き方が違う同じ資料は same_as で既存の依頼に寄せる
+        req3 = dict(req, area="仕訳テスト", doc_type="得意先ごとの売掛金の残高一覧", period="期末日", same_as="PBC0001")
+        c, out, err = run(S / "pbc.py", "add", "--engagement", self.eng, "--today", TODAY, "--json", json.dumps(req3, ensure_ascii=False))
+        self.assertEqual(json.loads(out)["areas"], ["仕訳テスト", "売上", "売掛金"], err)
+        self.assertNotEqual(run(S / "pbc.py", "add", "--engagement", self.eng, "--today", TODAY,
+                                "--json", json.dumps(dict(req3, same_as="PBC0099"), ensure_ascii=False))[0], 0)
+        self.assertEqual(len(json.loads(run(S / "pbc.py", "list", "--engagement", self.eng)[1])), 1)
         run(S / "pbc.py", "mark", "--engagement", self.eng, "--id", "PBC0001", "--status", "sent", "--today", "2026-10-27")
         due = json.loads(run(S / "pbc.py", "due", "--engagement", self.eng, "--today", "2026-10-30")[1])
         self.assertEqual(due["remind"][0]["id"], "PBC0001")  # 3営業日経過
@@ -170,6 +224,53 @@ class PluginTest(unittest.TestCase):
         cfg["materiality"]["overall"] = None
         cfg_p.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
         self.assertNotEqual(run(S / "engagement.py", "approve", "--engagement", self.eng, "--by", "x", "--today", TODAY)[0], 0)
+
+    def test_approve_requires_deadline_and_signature(self):
+        # 依頼メールの期限と署名が空のまま承認すると、承認後は書き換えられず「期限未設定」のメールになる
+        cfg_p = self.eng / "00_案件情報" / "engagement.json"
+        base = json.loads(cfg_p.read_text(encoding="utf-8"))
+        for key, value in [("evidence_deadline", ""), ("evidence_deadline", "11月末"), ("signature", "  ")]:
+            cfg = json.loads(json.dumps(base))
+            if key == "signature":
+                cfg["mail"]["signature"] = value
+            else:
+                cfg[key] = value
+            cfg_p.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+            code, _, err = run(S / "engagement.py", "approve", "--engagement", self.eng, "--by", "x", "--today", TODAY)
+            self.assertNotEqual(code, 0, f"{key}={value!r}")
+        cfg_p.write_text(json.dumps(base, ensure_ascii=False), encoding="utf-8")
+        self.approve()
+
+    def ledger_rows(self, folder: Path) -> list[list]:
+        try:
+            import openpyxl  # noqa: PLC0415
+        except ImportError:  # openpyxl が無い環境では台帳は CSV になる
+            with open(folder / "案件台帳.csv", encoding="utf-8-sig", newline="") as f:
+                return [[v or None for v in row] for row in list(csv.reader(f))[1:]]
+        return [[c.value for c in r] for r in openpyxl.load_workbook(folder / "案件台帳.xlsx").active.iter_rows(min_row=2)]
+
+    def test_ledger_with_relative_engagement_path(self):
+        # 案件フォルダの中から「.」やサブフォルダを渡しても、親フォルダの台帳の該当行を更新する
+        code, _, err = run(S / "engagement.py", "approve", "--engagement", ".", "--by", "川島", "--today", TODAY, cwd=self.eng)
+        self.assertEqual(code, 0, err)
+        code, _, err = run(S / "engagement.py", "status", "--engagement", "03_調書", "--status", "実行中（pass 0 / 全 9）",
+                           "--today", TODAY, cwd=self.eng)
+        self.assertEqual(code, 0, err)
+        for name in ("案件台帳.xlsx", "案件台帳.csv"):
+            self.assertFalse((self.eng / name).exists(), "案件フォルダの中に台帳を作らない")
+        rows = self.ledger_rows(self.tmp)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "テスト商事_2026-03期")
+        self.assertEqual(rows[0][4], "実行中（pass 0 / 全 9）")
+        self.assertEqual(rows[0][5], f"{TODAY} 川島")
+        self.assertNotEqual(run(S / "engagement.py", "status", "--engagement", self.tmp, "--status", "x", "--today", TODAY)[0], 0,
+                            "案件フォルダでない場所には書かない")
+
+    def test_scripts_run_in_isolated_mode(self):
+        # python3 -I（スクリプトのフォルダを import 先に足さない）でも共通モジュールを読める
+        for script in sorted(S.glob("*.py")):
+            p = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, f"{script.name}: {p.stderr}")
 
     def test_summarize(self):
         wp = {"area_id": "revenue", "area_name": "売上高", "status": "pass", "rounds": [{"round": 1, "score": 90}],

@@ -18,9 +18,11 @@ import json
 import re
 import shutil
 import sys
+from datetime import date
 from pathlib import Path
 
-from _common import ENGAGEMENT_FILE, FOLDERS, dump, load_engagement
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import ENGAGEMENT_FILE, FOLDERS, dump, find_engagement_root, load_engagement  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEDGER_HEADER = ["案件フォルダ", "クライアント", "決算期末", "種別", "状態", "計画承認", "最終更新"]
@@ -46,7 +48,13 @@ def upsert_ledger(root: Path, row: dict) -> str:
         if p.exists():
             with open(p, encoding="utf-8-sig", newline="") as f:
                 rows = list(csv.DictReader(f))
-        rows = [r for r in rows if r["案件フォルダ"] != row["案件フォルダ"]] + [row]
+        # xlsx と同じく、渡された値が空でない列だけを書き換える（状態の更新で計画承認などを消さない）
+        for r in rows:
+            if r["案件フォルダ"] == row["案件フォルダ"]:
+                r.update({k: v for k, v in row.items() if v != ""})
+                break
+        else:
+            rows.append(row)
         with open(p, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.DictWriter(f, fieldnames=LEDGER_HEADER)
             w.writeheader()
@@ -127,8 +135,20 @@ def cmd_new(args) -> None:
     dump({"engagement": str(eng_dir), "ledger": ledger, "carried_over": carried})
 
 
+def engagement_dir(arg: str) -> Path:
+    """--engagement を絶対パスの案件フォルダにする。
+
+    「.」のような相対パスのままだと親フォルダと案件フォルダ名が取れず、案件台帳を
+    案件フォルダの中に作ってしまう。案件フォルダの中のサブフォルダを渡されても、親をたどって見つける。
+    """
+    root = find_engagement_root(Path(arg).expanduser())
+    if root is None:
+        sys.exit(f"案件フォルダが見つかりません（00_案件情報/engagement.json がない）: {arg}")
+    return root
+
+
 def cmd_approve(args) -> None:
-    root = Path(args.engagement)
+    root = engagement_dir(args.engagement)
     eng = load_engagement(root)
     plan = root / "00_案件情報" / "plan.json"
     if not plan.exists():
@@ -138,6 +158,12 @@ def cmd_approve(args) -> None:
         sys.exit("重要性（overall と performance）が未設定です。人が決めた値を engagement.json に入れてから承認してください")
     if not eng.get("contacts") or not all(c.get("email") for c in eng["contacts"]):
         sys.exit("依頼先（contacts）のメールアドレスが空です")
+    try:
+        date.fromisoformat(eng.get("evidence_deadline") or "")
+    except ValueError:
+        sys.exit("資料の提出期限（evidence_deadline、YYYY-MM-DD）が未設定です。依頼メールの期限と督促の基準に使います")
+    if not (eng.get("mail") or {}).get("signature", "").strip():
+        sys.exit("依頼メールの署名（mail.signature）が未設定です")
     eng["plan_status"] = "approved"
     eng["plan_approved_by"] = args.by
     eng["plan_approved_at"] = args.today
@@ -152,7 +178,7 @@ def cmd_approve(args) -> None:
 def cmd_reopen(args) -> None:
     if not args.reason:
         sys.exit("--reason が必要です")
-    root = Path(args.engagement)
+    root = engagement_dir(args.engagement)
     eng = load_engagement(root)
     eng["plan_status"] = "draft"
     (root / ENGAGEMENT_FILE).write_text(json.dumps(eng, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -163,7 +189,7 @@ def cmd_reopen(args) -> None:
 
 
 def cmd_status(args) -> None:
-    root = Path(args.engagement)
+    root = engagement_dir(args.engagement)
     name = upsert_ledger(root.parent, {"案件フォルダ": root.name, "状態": args.status, "最終更新": args.today})
     dump({"ledger": name, "status": args.status})
 

@@ -19,7 +19,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from _common import dump
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import dump  # noqa: E402
 
 LEDGER_COLS = ["evidence_id", "received_at", "sender", "mail_id", "original_name", "stored_path", "sha256", "bytes", "note"]
 

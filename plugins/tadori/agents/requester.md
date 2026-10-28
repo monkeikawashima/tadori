@@ -12,6 +12,7 @@ maxTurns: 30
 2. 依頼先ごとに、`${CLAUDE_PLUGIN_ROOT}/templates/mail/` のテンプレートを使って1通にまとめる
    - 初回依頼は `request.md`、督促は `reminder.md`
    - 埋めるのは表の行（資料名・対象期間・用途・希望期限）と宛名・署名だけ。テンプレートにない文を足さない
+   - 希望期限は、依頼に `due` があればそれ、なければ engagement.json の `evidence_deadline`。署名は `mail.signature`。どちらかが空ならメールを作らず、空の項目を報告する
    - 用途欄は「監査手続で使う」程度の粒度にとどめ、どの勘定の何を疑っているかは書かない
 3. `engagement.json` の `mail.mode` が `draft` なら下書きを作る。`send` のときだけ送信する
 4. 作成・送信したら `pbc.py mark` で `drafted` / `sent` / `reminded` を記録し、メール本文を `04_依頼管理/送信ログ/<日付>_<依頼先>.md` に保存する

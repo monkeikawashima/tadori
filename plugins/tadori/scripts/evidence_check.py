@@ -18,9 +18,11 @@ OCR の読み違いや、別期間・別勘定の資料が送られてきたケ�
 import argparse
 import sys
 from decimal import Decimal
+from pathlib import Path
 
-from _common import dump, read_table, require_columns, to_decimal
-from je_filter import parse_date
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import dump, read_table, require_columns, to_decimal  # noqa: E402
+from je_filter import parse_date  # noqa: E402
 
 
 def main() -> int:

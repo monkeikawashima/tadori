@@ -17,8 +17,10 @@ import argparse
 import sys
 from collections import defaultdict
 from decimal import Decimal
+from pathlib import Path
 
-from _common import dump, read_table, require_columns, to_decimal
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import dump, read_table, require_columns, to_decimal  # noqa: E402
 
 
 def main() -> int:
