@@ -20,6 +20,10 @@ FOLDERS = [
     "06_ログ",
 ]
 
+# 調書（03_調書/<area_id>.json）のうち、scripts/state.py だけが書く項目。他の書き方は hooks/guard.py が止める
+STATE_FIELDS = ("status", "status_reason", "status_history", "rounds", "loop_start",
+                "blocked_at_loop_start", "rerun_pbc", "loop_decision")
+
 
 def find_engagement_root(start: str | Path) -> Path | None:
     """start から親をたどり、00_案件情報/engagement.json を持つフォルダを返す。"""

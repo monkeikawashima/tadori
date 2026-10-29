@@ -19,7 +19,7 @@ python3 $S/summarize.py --engagement . --today <今日>
 - 科目間の整合：売上と売掛金・前受金、仕入と買掛金・棚卸資産、減価償却費と固定資産台帳、借入金と支払利息。数字はスクリプトか Python で出す
 - 受領資料の改変チェック：`python3 $S/hash_evidence.py --engagement . --verify`
 - skeptic エージェントを `loop.skeptic_count`（既定3）体、独立に起動する。特別なリスクの領域と、点数が合格点ぎりぎりの領域を優先する。うち1体には「不正シナリオ」と指示し、仕訳テストの結果を渡す
-- skeptic の過半が「追加手続が必要」か「結論に反対」とした論点は、該当領域を run に戻すか、人間確認欄に上げる。戻すのは1回まで
+- skeptic の過半が「追加手続が必要」か「結論に反対」とした論点は、該当領域を run に戻すか、人間確認欄に上げる。戻すのは1回まで。戻すときは `python3 $S/state.py set-status --engagement . --area <area_id> --to draft --today <今日> --reason "skeptic の反証：<論点>"`
 
 ## 2. 最終パッケージを作る（`05_成果物/`）
 `deliverables` スキルの形式とファイル名ルールに従う。
@@ -38,4 +38,4 @@ python3 $S/summarize.py --engagement . --today <今日>
 ```bash
 python3 $S/engagement.py status --engagement . --status "最終査閲待ち" --today <今日>
 ```
-人に伝えるのは、査閲メモの場所と、判断が要る事項の件数だけ。意見の表明や結論の確定はしない。査閲の指摘を受けたら、該当領域を run で再実行する。
+人に伝えるのは、査閲メモの場所と、判断が要る事項の件数だけ。意見の表明や結論の確定はしない。査閲の指摘を受けたら、該当領域を `state.py set-status --to draft --reason "最終査閲の指摘：<内容>"` で戻し、run で再実行する。

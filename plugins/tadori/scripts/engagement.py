@@ -190,6 +190,9 @@ def cmd_reopen(args) -> None:
 
 def cmd_status(args) -> None:
     root = engagement_dir(args.engagement)
+    # 案件台帳は親フォルダにあるので、案件フォルダの中にも残す。state.py はこちらを読む
+    with open(root / "06_ログ" / "承認記録.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": args.today, "action": "status", "status": args.status}, ensure_ascii=False) + "\n")
     name = upsert_ledger(root.parent, {"案件フォルダ": root.name, "状態": args.status, "最終更新": args.today})
     dump({"ledger": name, "status": args.status})
 

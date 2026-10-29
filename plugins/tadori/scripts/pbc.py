@@ -147,7 +147,8 @@ def cmd_list(root: Path, args) -> None:
     dump(rows)
 
 
-def cmd_due(root: Path, args) -> None:
+def due(root: Path, today_s: str) -> dict:
+    """today_s 時点で、送るべき依頼・督促すべき依頼・エスカレーションすべき依頼を返す。state.py からも使う。"""
     eng = load_engagement(root)
     rules = eng.get("pbc_rules", {})
     remind_after = int(rules.get("remind_after_business_days", 3))
@@ -155,7 +156,7 @@ def cmd_due(root: Path, args) -> None:
     max_reminders = int(rules.get("max_reminders", 1))
     holidays = {date.fromisoformat(h) for h in eng.get("holidays", [])}
     deadline = eng.get("evidence_deadline")
-    today = date.fromisoformat(args.today)
+    today = date.fromisoformat(today_s)
 
     to_send: dict[str, list] = {}
     remind, escalate, past_deadline = [], [], []
@@ -170,13 +171,17 @@ def cmd_due(root: Path, args) -> None:
                 escalate.append({"id": r["id"], "to": r["to"], "business_days_waiting": since})
         if deadline and r["status"] in OPEN and today > date.fromisoformat(deadline):
             past_deadline.append(r["id"])
-    dump({
-        "today": args.today,
+    return {
+        "today": today_s,
         "send_batches": [{"to": k, "ids": v} for k, v in to_send.items()],
         "remind": remind,
         "escalate": escalate,
         "past_evidence_deadline": past_deadline,
-    })
+    }
+
+
+def cmd_due(root: Path, args) -> None:
+    dump(due(root, args.today))
 
 
 def cmd_report(root: Path, args) -> None:

@@ -282,6 +282,129 @@ class PluginTest(unittest.TestCase):
         self.assertTrue(res["judgements_needed"])
         self.assertTrue((self.eng / res["xlsx"]).exists())
 
+    # ---- state ----
+    def state(self, *args, today=TODAY):
+        c, out, err = run(S / "state.py", *args, "--engagement", self.eng, "--today", today)
+        return c, (json.loads(out) if out.strip() else {}), err
+
+    def set_plan(self, *areas):
+        plan = {"version": 1, "areas": [{"area_id": a, "area_name": a, "procedures": []} for a in areas]}
+        (self.eng / "00_案件情報" / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+    def write_wp(self, area, done=True, blocked=None):
+        """executor が書く想定の調書。状態の項目は残したまま、手続と不足資料だけを書き換える。"""
+        p = self.eng / "03_調書" / f"{area}.json"
+        wp = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"area_id": area, "status": "draft", "rounds": []}
+        wp["procedures"] = [{"proc_id": "P-01", "status": "完了" if done else "未了"}]
+        wp["blocked"] = blocked or []
+        p.write_text(json.dumps(wp, ensure_ascii=False), encoding="utf-8")
+
+    def read_wp(self, area):
+        return json.loads((self.eng / "03_調書" / f"{area}.json").read_text(encoding="utf-8"))
+
+    def write_review(self, area, rnd, score, hard=0, needs_human=()):
+        rv = {"area_id": area, "round": rnd, "score": score, "needs_human": list(needs_human),
+              "hard_fails": [{"check": "H1", "where": "P-01", "detail": "x"}] * hard, "issues": []}
+        (self.eng / "03_調書" / f"{area}.review.json").write_text(json.dumps(rv, ensure_ascii=False), encoding="utf-8")
+
+    def test_state_next_walks_the_engagement(self):
+        self.assertEqual(run(S / "state.py", "next", "--engagement", self.tmp, "--today", TODAY)[1].count('"A"'), 1)
+        tb = self.eng / "02_正規化データ" / "試算表.csv"
+        tb.rename(tb.with_suffix(".bak"))
+        self.assertEqual(self.state("next")[1]["state"], "B")
+        tb.with_suffix(".bak").rename(tb)
+        self.set_plan("revenue", "cash")
+        self.assertEqual(self.state("next")[1]["state"], "C")
+        self.approve()
+        res = self.state("next")[1]
+        self.assertEqual((res["state"], res["run"]), ("D", ["revenue", "cash"]))
+        # revenue は1周で合格、cash は資料が無く手続を実施できない
+        self.write_wp("revenue")
+        self.assertEqual(self.state("after-execute", "--area", "revenue")[1]["decision"], "review")
+        self.write_review("revenue", 1, 90)
+        self.assertEqual(self.state("review-step", "--area", "revenue")[1]["decision"], "pass")
+        self.write_wp("cash", done=False, blocked=[{"doc_type": "残高証明書", "pbc": ""}])
+        self.assertEqual(self.state("after-execute", "--area", "cash")[1]["decision"], "blocked")
+        self.assertEqual(self.state("next")[1]["queue"], ["cash"], "依頼キューに入れていない不足資料")
+        req = {"area": "cash", "doc_type": "残高証明書", "period": "2026-03-31", "reason": "残高の照合", "to": "keiri"}
+        run(S / "pbc.py", "add", "--engagement", self.eng, "--today", TODAY, "--json", json.dumps(req, ensure_ascii=False))
+        wp = self.read_wp("cash")
+        wp["blocked"][0]["pbc"] = "PBC0001"
+        (self.eng / "03_調書" / "cash.json").write_text(json.dumps(wp, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual(self.state("next")[1]["state"], "E")
+        run(S / "pbc.py", "mark", "--engagement", self.eng, "--id", "PBC0001", "--status", "sent", "--today", TODAY)
+        res = self.state("next")[1]
+        self.assertEqual((res["state"], res["keep_watching"]), ("F", True))
+        run(S / "pbc.py", "mark", "--engagement", self.eng, "--id", "PBC0001", "--status", "accepted", "--today", TODAY)
+        self.assertEqual(self.state("next")[1]["rerun"], ["cash"])
+        c, res, err = self.state("set-status", "--area", "cash", "--to", "draft")
+        self.assertEqual(c, 0, res)
+        self.assertEqual(self.read_wp("cash")["rerun_pbc"], ["PBC0001"])
+        self.write_wp("cash")
+        self.state("after-execute", "--area", "cash")
+        self.write_review("cash", 1, 88)
+        self.assertEqual(self.state("review-step", "--area", "cash")[1]["decision"], "pass")
+        res = self.state("next")[1]
+        self.assertEqual((res["state"], res["keep_watching"]), ("G", False))
+        run(S / "engagement.py", "status", "--engagement", self.eng, "--status", "最終査閲待ち", "--today", TODAY)
+        self.assertEqual(self.state("next")[1]["state"], "H")
+
+    def test_state_review_loop_decisions(self):
+        self.write_wp("revenue")
+        self.state("after-execute", "--area", "revenue")
+        self.write_review("revenue", 1, 70, hard=1, needs_human=[{"issue": "期間帰属の判断", "why": "x"}])
+        self.assertEqual(self.state("review-step", "--area", "revenue")[1]["decision"], "fix")
+        again = self.state("review-step", "--area", "revenue")[1]
+        self.assertTrue(again["already_recorded"], "同じ査閲結果は二重に数えない")
+        self.assertEqual(len(self.read_wp("revenue")["rounds"]), 1)
+        self.assertEqual(self.read_wp("revenue")["escalations"][0]["issue"], "期間帰属の判断")
+        self.write_review("revenue", 2, 70)
+        res = self.state("review-step", "--area", "revenue")[1]
+        self.assertEqual((res["decision"], res["reason"]), ("escalate", "改善が止まった"))
+        # 最大周回（2周に絞る）と、ループ中に不足資料が増えた場合
+        cfg = json.loads((self.eng / "00_案件情報" / "engagement.json").read_text(encoding="utf-8"))
+        cfg["loop"]["max_rounds"] = 2
+        (self.eng / "00_案件情報" / "engagement.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        self.write_wp("cash")
+        self.state("after-execute", "--area", "cash")
+        for rnd, score in [(1, 60), (2, 75)]:
+            self.write_review("cash", rnd, score)
+            res = self.state("review-step", "--area", "cash")[1]
+        self.assertEqual((res["decision"], res["reason"]), ("escalate", "最大周回"))
+        self.write_wp("ar")
+        self.state("after-execute", "--area", "ar")
+        self.write_wp("ar", blocked=[{"doc_type": "残高確認の回答", "pbc": ""}])
+        self.write_review("ar", 1, 95)
+        self.assertEqual(self.state("review-step", "--area", "ar")[1]["decision"], "blocked")
+
+    def test_state_set_status_rules(self):
+        self.write_wp("revenue")
+        self.state("after-execute", "--area", "revenue")
+        self.assertEqual(self.state("set-status", "--area", "revenue", "--to", "pass")[0], 1, "査閲の記録が無い")
+        self.assertEqual(self.state("set-status", "--area", "revenue", "--to", "escalate", "--reason", "人の判断")[0], 1)
+        self.assertEqual(self.state("set-status", "--area", "revenue", "--to", "escalate", "--reason", "なんとなく")[0], 1)
+        self.write_review("revenue", 1, 92)
+        self.state("review-step", "--area", "revenue")
+        self.assertEqual(self.state("set-status", "--area", "revenue", "--to", "blocked")[0], 1, "pass から blocked へは移れない")
+        self.assertEqual(self.state("set-status", "--area", "revenue", "--to", "draft")[0], 1, "理由なしでは戻せない")
+        c, res, _ = self.state("set-status", "--area", "revenue", "--to", "draft", "--reason", "skeptic の反証で再実行")
+        self.assertEqual(c, 0, res)
+        wp = self.read_wp("revenue")
+        self.assertEqual((wp["status"], wp["loop_start"]), ("draft", 1))
+        self.assertEqual([h["to"] for h in wp["status_history"]], ["pass", "draft"])
+
+    def test_state_charge_budget(self):
+        cfg = json.loads((self.eng / "00_案件情報" / "engagement.json").read_text(encoding="utf-8"))
+        cfg["budget"]["max_agent_calls_per_area"] = 2
+        (self.eng / "00_案件情報" / "engagement.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        self.write_wp("revenue")
+        for _ in range(2):
+            self.assertEqual(self.state("charge", "--area", "revenue", "--agent", "reviewer")[0], 0)
+        c, res, _ = self.state("charge", "--area", "revenue", "--agent", "fixer")
+        self.assertEqual(c, 1)
+        self.assertIn("予算超過", res["error"])
+        self.assertEqual((self.read_wp("revenue")["status"], self.read_wp("revenue")["status_reason"]), ("escalate", "予算超過"))
+
     # ---- hooks ----
     def hook(self, script, tool, tool_input, cwd=None):
         payload = {"tool_name": tool, "tool_input": tool_input, "cwd": str(cwd or self.eng)}

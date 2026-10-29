@@ -9,33 +9,41 @@ description: 承認済みの監査計画に従って、領域ごとに executor 
 スクリプトの場所：`${CLAUDE_PLUGIN_ROOT}/scripts`（展開されていなければ `../../scripts`）。以下 `$S`。
 
 ## 0. 始める前に
-- `00_案件情報/engagement.json` の `plan_status` が `approved` でなければ止めて、plan スキルに戻す
-- 対象領域：指定があればそれだけ、無ければ plan.json の全領域から status が `pass` 以外のもの
-- 予算：`engagement.json` の `budget`。領域ごとのサブエージェント呼出数と全体の呼出数を数え、超えたらその領域を `escalate`（理由「予算超過」）にして止める
+- 対象領域は `python3 $S/state.py next --engagement . --today <今日>` の `run`（未実行・実行途中）と `rerun`（資料が届いた）。指定があればそれだけ。`queue` だけなら 3 に進む
+- `rerun` の領域は、先に `python3 $S/state.py set-status --engagement . --area <area_id> --to draft --today <今日>` で再実行の状態に戻す
+- 計画が未承認なら `next` が C を返す。plan スキルに戻す
+
+## ループの判断はスクリプトが決める
+合格・打ち切り・修正に戻すの判断と、調書の状態の項目（`status`、`status_reason`、`status_history`、`rounds` など）の記録は `state.py` が行う。自分で調書の `status` や `rounds` を書かない（hooks が止める）。周回数・合格点・予算を自分で数えない。
+
+| 呼ぶもの | いつ | 返す `decision` |
+|---|---|---|
+| `state.py charge --area <id> --agent <executor/reviewer/fixer>` | サブエージェントを起動する直前に毎回 | 終了コード 1 なら予算超過。起動せず、その領域は escalate になっている |
+| `state.py after-execute --area <id>` | executor が終わったら | `review`：レビューへ／`blocked`：完了した手続が無いので 3 へ |
+| `state.py review-step --area <id>` | reviewer が `<id>.review.json` を書いたら | `fix`：fixer へ／`pass`・`escalate`・`blocked`：その領域は終わり |
+
+コマンドはどれも `--engagement . --today <今日>` を付ける。
 
 ## 1. 実行（領域ごと、並列）
-領域ごとに executor エージェントを起動する。独立した領域は同時に起動してよい（目安：同時に 4〜6 領域）。
+領域ごとに `charge`（agent executor）→ executor → `after-execute`。独立した領域は同時に起動してよい（目安：同時に 4〜6 領域）。
 渡すもの：area_id、plan.json の該当部分、重要性、データの場所。これ以外の会話の文脈は渡さない。
 
-完了した手続が1つもない領域（`procedures` がすべて「未了」）は、レビューに回さない。調書の `status` を `blocked`、`status_reason` に「受領済みの資料では手続を実施できない」と書いて 3 に進む。レビューは資料を受け取って再実行した後に行う（外部証拠がない状態でレビューしても、資料を求める指摘しか出ないため）。
+完了した手続が1つもない領域は `after-execute` が `blocked` にする（外部証拠がない状態でレビューしても、資料を求める指摘しか出ないため）。3 に進む。
 
 ## 2. レビューループ（領域ごと）
-`engagement.json` の `loop`（既定：合格点 85、最大 4 周）に従う。完了した手続が1つでもあれば、`blocked` があってもループに入る。
-
 ```
-前回点 = なし
-for 周 in 1..最大周:
-    結果 = reviewer(area_id)          ← 調書と証拠だけを渡す。executor/fixer の説明は渡さない
-    調書.rounds に {周, 点, ハード件数} を追記
-    if ハード0件 かつ 点 >= 合格点:  status = pass; 終了
-    if 前回点 があり 点 <= 前回点:   status = escalate（理由「改善が止まった」）; 終了
-    前回点 = 点
-    fixer(area_id, 結果.issues と hard_fails)
-status = escalate（理由「最大周回」）
+周 = after-execute の next_round
+繰り返す:
+    charge(reviewer) が失敗 → 終わり（escalate 済み）
+    reviewer(area_id, 周)        ← 調書と証拠だけを渡す。executor/fixer の説明は渡さない。round に周を書かせる
+    結果 = review-step(area_id)
+    if 結果.decision != "fix":  終わり（pass / escalate / blocked）
+    charge(fixer) が失敗 → 終わり
+    fixer(area_id, review.json の issues と hard_fails)
+    周 += 1
 ```
-- reviewer の `needs_human` は調書の `escalations` に転記する
-- ループ中に `blocked` が増えたら、その領域は `blocked` にしてループを抜ける
-- `status`、`status_reason`（なぜその状態にしたか）、`rounds` は、このスキルが調書に書く
+- 合格点・最大周回（`engagement.json` の `loop`）、「点が前の周以下なら打ち切り」、「ループ中に不足資料が増えたら blocked」、reviewer の `needs_human` の `escalations` への転記は、`review-step` が行う
+- `status` を手で変える必要があるとき（skeptic や最終査閲の差戻し、人の判断で escalate）は `state.py set-status --area <id> --to <draft/escalate> --reason "…"`。遷移表にない移り方は止まる
 
 ## 3. 資料不足の振り分け
 status が `blocked` の領域は、調書の `blocked` のうち `pbc` が空のものを1件ずつ依頼キューに入れる。
@@ -59,4 +67,4 @@ python3 $S/engagement.py status --engagement . --status "実行中（pass x / �
 報告は「pass／escalate／blocked の領域数」「新しく依頼キューに入れた件数」「人の判断が要る事項」だけ。全領域が pass か escalate になり、blocked が0なら finalize スキルに進む（利用者には「/tadori:start で最終確認に進みます」と伝える）。
 
 ## 再実行
-受領資料で依頼が充足したら、intake スキルから該当領域だけを指定してこのスキルを呼ぶ。executor は既存の調書を読み、未了の手続だけを実行する。
+受領資料で依頼が充足したら、intake スキルから該当領域だけを指定してこのスキルを呼ぶ（`state.py next` の `rerun` に出る）。`set-status --to draft` で戻してから、executor は既存の調書を読み、未了の手続だけを実行する。周回数と「改善が止まった」の比較は、戻したところから数え直される。
