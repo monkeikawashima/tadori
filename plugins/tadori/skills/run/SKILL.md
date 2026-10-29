@@ -45,6 +45,17 @@ description: 承認済みの監査計画に従って、領域ごとに executor 
 - 合格点・最大周回（`engagement.json` の `loop`）、「点が前の周以下なら打ち切り」、「ループ中に不足資料が増えたら blocked」、reviewer の `needs_human` の `escalations` への転記は、`review-step` が行う
 - `status` を手で変える必要があるとき（skeptic や最終査閲の差戻し、人の判断で escalate）は `state.py set-status --area <id> --to <draft/escalate> --reason "…"`。遷移表にない移り方は止まる
 
+### Claude Code で Workflow を使う場合
+利用者が「workflow で回して」のように明示的に頼んだときだけ、1〜2 を Workflow ツールで実行してよい。
+```
+Workflow(scriptPath: "${CLAUDE_PLUGIN_ROOT}/workflows/run-areas.js",
+         args: {"engagement": "<案件フォルダの絶対パス>", "scripts": "<$S の絶対パス>", "today": "<今日>", "areas": ["<area_id>", ...]})
+```
+- 呼ぶ順番は上の 1〜2 と同じで、判断も同じ `state.py` が行う。違うのは、順番をスクリプトが持つことと、途中の結果が会話に入らないこと
+- 止まったら、同じ scriptPath と args に `resumeFromRunId` を付けて再開できる。終わったエージェントの結果はそのまま使われる
+- 戻り値の `areas`（領域ごとの status と理由）を見て 3 に進む
+- Workflow が無い環境（Cowork など）や、利用者が頼んでいないときは、上の手順をそのまま行う
+
 ## 3. 資料不足の振り分け
 status が `blocked` の領域は、調書の `blocked` のうち `pbc` が空のものを1件ずつ依頼キューに入れる。
 ```bash

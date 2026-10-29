@@ -1,6 +1,7 @@
 """scripts と hooks の動作確認。python3 -m unittest discover -s tests"""
 import csv
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -404,6 +405,24 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(c, 1)
         self.assertIn("予算超過", res["error"])
         self.assertEqual((self.read_wp("revenue")["status"], self.read_wp("revenue")["status_reason"]), ("escalate", "予算超過"))
+
+    def test_workflow_run_areas_uses_state_py(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node が無い")
+        wf_args = {"engagement": str(self.eng), "scripts": str(S), "today": TODAY, "areas": ["revenue", "cash", "ar"]}
+        scores = {"revenue": [70, 90], "cash": "blocked", "ar": [60, 55]}
+        p = subprocess.run([node, str(Path(__file__).parent / "workflow_harness.mjs"), str(PLUGIN / "workflows" / "run-areas.js"),
+                            json.dumps(wf_args, ensure_ascii=False), json.dumps(scores)], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        res = json.loads(p.stdout)
+        got = {a["area"]: (a["status"], a.get("reason")) for a in res["result"]["areas"]}
+        self.assertEqual(got, {"revenue": ("pass", "2周目で合格"), "cash": ("blocked", "受領済みの資料では手続を実施できない"),
+                               "ar": ("escalate", "改善が止まった")})
+        self.assertEqual([r["score"] for r in self.read_wp("revenue")["rounds"]], [70, 90])
+        self.assertEqual(self.read_wp("revenue")["conclusion"][:2], "修正", "fixer が1回入った")
+        budget = json.loads((self.eng / "03_調書" / "_budget.json").read_text(encoding="utf-8"))
+        self.assertEqual(budget["areas"], {"revenue": 4, "cash": 1, "ar": 4})  # executor + reviewer×2 + fixer×1
 
     # ---- hooks ----
     def hook(self, script, tool, tool_input, cwd=None):
