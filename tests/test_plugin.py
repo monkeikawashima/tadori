@@ -350,6 +350,14 @@ class PluginTest(unittest.TestCase):
         run(S / "engagement.py", "status", "--engagement", self.eng, "--status", "最終査閲待ち", "--today", TODAY)
         self.assertEqual(self.state("next")[1]["state"], "H")
 
+    def test_state_next_not_requested_documents(self):
+        self.set_plan("cash")
+        self.approve()
+        self.write_wp("cash", done=False, blocked=[{"doc_type": "銀行確認状の回答", "pbc": "ESC"}])
+        self.state("after-execute", "--area", "cash")
+        res = self.state("next")[1]
+        self.assertEqual((res["state"], res["keep_watching"]), ("F", False), "人が扱う資料だけを待つなら見張らない")
+
     def test_state_review_loop_decisions(self):
         self.write_wp("revenue")
         self.state("after-execute", "--area", "revenue")

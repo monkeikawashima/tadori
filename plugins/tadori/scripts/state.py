@@ -41,6 +41,9 @@ TRANSITIONS = {
     "escalate": {"draft"},
 }
 ESCALATE_REASONS = ["改善が止まった", "最大周回", "予算超過", "人の判断"]
+# 依頼メールで集めない不足資料（確認状、不正の兆候に関わる資料、人が行う質問の記録）の blocked[].pbc に書く印。
+# 依頼キューには入れず、調書の escalations で人が扱う
+NOT_REQUESTED = "ESC"
 
 
 class Stop(Exception):
@@ -243,7 +246,10 @@ def cmd_next(root: Path | None, args) -> dict:
     if d["send_batches"] or d["remind"] or d["escalate"]:
         return out("E", "request-mail", "送るべき依頼・督促がある", due=d, **common)
     if "blocked" in statuses:
-        return out("F", "wait", "資料待ちの領域がある", past_evidence_deadline=d["past_evidence_deadline"], **common)
+        res = out("F", "wait", "資料待ちの領域がある", past_evidence_deadline=d["past_evidence_deadline"], **common)
+        # 待っているのが人の扱う資料（NOT_REQUESTED）だけなら、見張っても届かない
+        res["keep_watching"] = bool(open_reqs)
+        return res
     return out("G", "finalize", "全領域が pass か escalate", **common)
 
 
