@@ -187,8 +187,9 @@ def check(root: Path, eng: dict, area: str, wp: dict, to: str, reason: str) -> N
 # ---- サブコマンド ----
 def cmd_next(root: Path | None, args) -> dict:
     def out(state, action, reason, **kw):
+        # /loop で見張るときの止まる条件。人の判断が要るところ（C・H・予算超過）と、やることが無くなったら止める
         return {"state": state, "action": action, "reason": reason, **kw,
-                "keep_watching": state in ("D", "E", "F")}
+                "keep_watching": state in ("D", "E", "F") and action != "ask-human"}
 
     if root is None:
         return out("A", "new-engagement", "00_案件情報/engagement.json がない")

@@ -396,8 +396,10 @@ class PluginTest(unittest.TestCase):
 
     def test_state_charge_budget(self):
         cfg = json.loads((self.eng / "00_案件情報" / "engagement.json").read_text(encoding="utf-8"))
-        cfg["budget"]["max_agent_calls_per_area"] = 2
+        cfg["budget"].update(max_agent_calls_per_area=2, max_agent_calls_total=2)
         (self.eng / "00_案件情報" / "engagement.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        self.set_plan("revenue", "cash")
+        self.approve()
         self.write_wp("revenue")
         for _ in range(2):
             self.assertEqual(self.state("charge", "--area", "revenue", "--agent", "reviewer")[0], 0)
@@ -405,6 +407,8 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(c, 1)
         self.assertIn("予算超過", res["error"])
         self.assertEqual((self.read_wp("revenue")["status"], self.read_wp("revenue")["status_reason"]), ("escalate", "予算超過"))
+        res = self.state("next")[1]  # cash は未実行だが、全体の予算も使い切った
+        self.assertEqual((res["action"], res["keep_watching"]), ("ask-human", False))
 
     def test_workflow_run_areas_uses_state_py(self):
         node = shutil.which("node")
