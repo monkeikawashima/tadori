@@ -418,6 +418,44 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(self.hook("guard.py", "Bash", {"command": "ls 01_受領資料"})[0], 0)
         self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(self.eng / "03_調書" / "revenue.json")})[0], 0)
 
+    def test_guard_workpaper_state_only_via_state_py(self):
+        p = self.eng / "03_調書" / "revenue.json"
+        fresh = {"area_id": "revenue", "procedures": [], "status": "draft", "rounds": []}
+        self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(p), "content": json.dumps(fresh)})[0], 0)
+        code, _, err = self.hook("guard.py", "Write", {"file_path": str(p), "content": json.dumps(dict(fresh, status="pass"))})
+        self.assertEqual(code, 2, "初めて書く調書を pass にはできない")
+        self.assertIn("state.py", err)
+        p.write_text(json.dumps(fresh, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.state("after-execute", "--area", "revenue")  # 手続が無いので止まる（状態は変わらない）
+        self.write_wp("revenue")
+        self.state("after-execute", "--area", "revenue")
+        self.write_review("revenue", 1, 60)
+        self.state("review-step", "--area", "revenue")
+        cur = p.read_text(encoding="utf-8")
+        wp = json.loads(cur)
+        # 状態の項目を残したまま、手続や結論を直すのはよい
+        ok = dict(wp, conclusion="修正後の結論")
+        self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(p), "content": json.dumps(ok, ensure_ascii=False)})[0], 0)
+        # rounds を消す・status を書き換える・点数を書き換える
+        for bad in (dict(wp, rounds=[]), dict(wp, status="pass"),
+                    dict(wp, rounds=[dict(wp["rounds"][0], score=95)])):
+            self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(p), "content": json.dumps(bad, ensure_ascii=False)})[0], 2)
+        self.assertEqual(self.hook("guard.py", "Edit", {"file_path": str(p), "old_string": '"status": "draft"',
+                                                        "new_string": '"status": "pass"'})[0], 2)
+        self.assertEqual(self.hook("guard.py", "Edit", {"file_path": str(p), "old_string": '"area_id": "revenue"',
+                                                        "new_string": '"area_id": "revenue", "confidence": "中"'})[0], 0)
+        self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(self.eng / "03_調書" / "_budget.json"),
+                                                         "content": "{}"})[0], 2)
+        # レビュー結果と作業フォルダは対象外
+        self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(self.eng / "03_調書" / "revenue.review.json"),
+                                                         "content": '{"status": "pass"}'})[0], 0)
+        self.assertEqual(self.hook("guard.py", "Write", {"file_path": str(self.eng / "03_調書" / "revenue_work" / "a.json"),
+                                                         "content": '{"status": "pass"}'})[0], 0)
+        py = "python3 -c \"import json,pathlib;pathlib.Path('03_調書/revenue.json').write_text('{}')\""
+        self.assertEqual(self.hook("guard.py", "Bash", {"command": py})[0], 2)
+        self.assertEqual(self.hook("guard.py", "Bash", {"command": "jq . 03_調書/revenue.json"})[0], 0)
+        self.assertEqual(self.hook("guard.py", "Bash", {"command": "python3 $S/state.py review-step --area revenue"})[0], 0)
+
     def test_guard_plan_locked_after_approval(self):
         plan = str(self.eng / "00_案件情報" / "plan.json")
         self.assertEqual(self.hook("guard.py", "Edit", {"file_path": plan})[0], 0)

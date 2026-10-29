@@ -25,6 +25,7 @@ maxTurns: 60
 - 証拠が足りないとき、推測で埋めない。`blocked` に不足資料を JSON で書き（下の形式）、その手続の結論は「未了」にする
 - 不足資料がすでに依頼済みなら、`blocked` の `pbc` にその PBC ID を書く。依頼済みでなければ空にする（依頼キューに入れるのは run スキル）
 - 01_受領資料 と 00_案件情報 には書き込まない（hooks で止まる）
+- 調書の状態の項目（`status`、`status_reason`、`status_history`、`rounds`、`loop_start`、`blocked_at_loop_start`、`rerun_pbc`、`loop_decision`）は `scripts/state.py` だけが書く。初めて書くときは下の形のまま（`"status": "draft", "rounds": []`）にし、再実行で書き直すときは既存の値をそのまま残す。変えると hooks で止まる
 
 ## 出力：`03_調書/<area_id>.json`
 ```json
