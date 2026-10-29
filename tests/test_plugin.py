@@ -538,6 +538,7 @@ class PluginTest(unittest.TestCase):
         self.assertIsNone(stop(), "pass になれば止めない")
         self.write_wp("cash", done=False, blocked=[{"doc_type": "残高証明書", "pbc": ""}])
         self.state("after-execute", "--area", "cash")
+        self.write_review("cash", 1, 40)  # 古い版で回した査閲結果が残っている
         self.assertIsNone(stop(), "資料待ち（blocked）では止めない")
 
     def test_audit_log(self):

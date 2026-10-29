@@ -29,9 +29,11 @@ def unfinished(root: Path) -> list[str]:
         except ValueError:
             continue
         area = wp.get("area_id", p.stem)
+        if (wp.get("status") or "draft") != "draft":
+            continue  # ループの外。古い版の rounds には査閲結果の記録が無いので、ここでは比べない
         if is_unrecorded_review(root, area, wp):
             found.append(f"{area}：査閲結果が rounds に記録されていない（state.py review-step を実行する）")
-        elif (wp.get("status") or "draft") == "draft":
+        else:
             found.append(f"{area}：status が draft のまま（after-execute か review-step の判定まで進める）")
     return found
 
