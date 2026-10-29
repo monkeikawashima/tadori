@@ -73,6 +73,12 @@ def review_sha(root: Path, area: str) -> str | None:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.exists() else None
 
 
+def is_unrecorded_review(root: Path, area: str, wp: dict) -> bool:
+    """reviewer が書いた査閲結果が、まだ review-step で rounds に記録されていないか。hooks/stop_check.py も使う。"""
+    sha = review_sha(root, area)
+    return bool(sha) and all(r.get("review_sha") != sha for r in wp.get("rounds", []))
+
+
 def loop_conf(eng: dict) -> tuple[int, int]:
     loop = eng.get("loop", {})
     return int(loop.get("pass_score", 85)), int(loop.get("max_rounds", 4))

@@ -1,6 +1,17 @@
 {
-  "description": "案件フォルダの書込ガード、メール宛先ガード、ツール呼出ログ",
+  "description": "案件フォルダの書込ガード、メール宛先ガード、ツール呼出ログ、run の途中終了の確認",
   "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_check.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",

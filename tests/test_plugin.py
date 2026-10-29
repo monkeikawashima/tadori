@@ -508,6 +508,30 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(self.hook("mail_guard.py", "mcp__Slack__slack_send_message", {"channel": "x"})[0], 0)
         self.assertEqual(self.hook("mail_guard.py", send, ok_to, cwd=self.tmp)[0], 0, "案件外では働かない")
 
+    def test_stop_check_nudges_once_when_run_is_unfinished(self):
+        def stop(active=False, cwd=None):
+            payload = {"cwd": str(cwd or self.eng), "stop_hook_active": active}
+            code, out, err = run(H / "stop_check.py", stdin=json.dumps(payload))
+            self.assertEqual(code, 0, err)
+            return json.loads(out) if out.strip() else None
+
+        self.write_wp("revenue")
+        self.assertIsNone(stop(), "計画承認前は働かない")
+        self.approve()
+        res = stop()
+        self.assertEqual(res["decision"], "block")
+        self.assertIn("revenue：status が draft", res["reason"])
+        self.assertIsNone(stop(active=True), "促すのは1回だけ")
+        self.assertIsNone(stop(cwd=self.tmp), "案件外では働かない")
+        self.state("after-execute", "--area", "revenue")
+        self.write_review("revenue", 1, 90)
+        self.assertIn("review-step", stop()["reason"])
+        self.state("review-step", "--area", "revenue")
+        self.assertIsNone(stop(), "pass になれば止めない")
+        self.write_wp("cash", done=False, blocked=[{"doc_type": "残高証明書", "pbc": ""}])
+        self.state("after-execute", "--area", "cash")
+        self.assertIsNone(stop(), "資料待ち（blocked）では止めない")
+
     def test_audit_log(self):
         payload = {"tool_name": "Read", "tool_input": {"file_path": "x"}, "tool_response": "ok", "cwd": str(self.eng)}
         run(H / "audit_log.py", stdin=json.dumps(payload))
